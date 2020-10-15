@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+  </head>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    var videoElem;
+    const socket = io();
+    let mediaRecorder = null;
+    const startRecording = (someStream) => {
+      const mediaStream = new MediaStream();
+      const videoTrack = someStream.getVideoTracks()[0];
+      const audioTrack = someStream.getAudioTracks()[0];
+      console.log("Video trac ", videoTrack);
+      console.log("audio trac ", audioTrack);
+      mediaStream.addTrack(videoTrack);
+      mediaStream.addTrack(audioTrack);
+
+      const recorderOptions = {
+        mimeType: "video/webm;codecs=h264",
+        videoBitsPerSecond: 3 * 1024 * 1024,
+      };
+
+      mediaRecorder = new MediaRecorder(mediaStream, recorderOptions);
+      mediaRecorder.start(100); // 1000 - the number of milliseconds to record into each Blob
+      mediaRecorder.ondataavailable = (event) => {
+        console.debug("Got blob data:", event.data);
+        if (event.data && event.data.size > 0) {
+          socket.emit("message", event.data);
+        }
+      };
+    };
+
+    const getVideoStream = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true,
+        });
+        startRecording(stream);
+        myVideo.srcObject = stream;
+      } catch (e) {
+        console.error("navigator.getUserMedia error:", e);
+      }
+    };
+
+    const stopRecording = () => {
+      mediaRecorder.stop();
+      socket.emit("stop");
+      socket.close();
+    };
+
+    var displayMediaOptions = {
+      video: {
+        cursor: "always"
+      },
+      audio: false
+    };
+
+    const startScreenCapture = () => {
+      try {
+        videoElem = document.getElementById('myscreen');
+        videoElem.srcObject = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
+        dumpOptionsInfo();
+      } catch(err) {
+        console.error("Error: " + err);
+      }
+    };
+
+    const stopCapture = (evt) => {
+      let tracks = videoElem.srcObject.getTracks();
+
+      tracks.forEach(track => track.stop());
+      videoElem.srcObject = null;
+    };
+  </script>
+  <body>
+    <h1>Educast Recorder</h1>
+
+    <video
+      width="300"
+      height="220"
+      autoplay
+      id="myvideo"
+      style="border: 5px solid blue"
+    />
+
+    <video
+      width="300"
+      height="220"
+      autoplay
+      id="myscreen"
+      style="border: 5px solid red"
+    />
+
+    <button onclick="getVideoStream()">Start Rec</button>
+    <button onclick="stopRecording()">Stop Rec</button>
+
+    <button onclick="startScreenCapture()">Start Screen Rec</button>
+    <button onclick="stopCapture()">Stop Screen Rec</button>
+
+    <script>
+      const myVideo = document.getElementById("myvideo");
+      myVideo.muted = true;
+    </script>
+  </body>
+</html>
