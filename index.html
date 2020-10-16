@@ -10,6 +10,7 @@
     var videoElem;
     const socket = io();
     let mediaRecorder = null;
+    let screenMediaRecorder = null;
     const startRecording = (someStream) => {
       const mediaStream = new MediaStream();
       const videoTrack = someStream.getVideoTracks()[0];
@@ -20,7 +21,7 @@
       mediaStream.addTrack(audioTrack);
 
       const recorderOptions = {
-        mimeType: "video/webm;codecs=h264",
+        mimeType: "video/webm;codecs=vp9",
         videoBitsPerSecond: 3 * 1024 * 1024,
       };
 
@@ -28,6 +29,7 @@
       mediaRecorder.start(100); // 1000 - the number of milliseconds to record into each Blob
       mediaRecorder.ondataavailable = (event) => {
         console.debug("Got blob data:", event.data);
+        console.log("Camera stream: ", event.data);
         if (event.data && event.data.size > 0) {
           socket.emit("message", event.data);
         }
@@ -55,17 +57,38 @@
 
     var displayMediaOptions = {
       video: {
-        cursor: "always"
+        cursor: "always",
       },
-      audio: false
+      audio: false,
     };
 
-    const startScreenCapture = () => {
+    const startScreenCapture = async () => {
       try {
-        videoElem = document.getElementById('myscreen');
-        videoElem.srcObject = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
-        dumpOptionsInfo();
-      } catch(err) {
+        let screenStream;
+        videoElem = document.getElementById("myscreen");
+        screenStream = await navigator.mediaDevices.getDisplayMedia(
+          displayMediaOptions
+        );
+
+        const recorderOptions = {
+          mimeType: "video/webm;codecs=h264",
+          videoBitsPerSecond: 3 * 1024 * 1024,
+        };
+
+        screenMediaRecorder = new MediaRecorder(screenStream, recorderOptions);
+        screenMediaRecorder.start(100); // 1000 - the number of milliseconds to record into each Blob
+        screenMediaRecorder.ondataavailable = (event) => {
+          console.debug("Got blob data:", event.data);
+          console.log("Camera stream: ", event.data);
+          if (event.data && event.data.size > 0) {
+            socket.emit("screen_stream", event.data);
+          }
+        };
+
+        videoElem.srcObject = screenStream;
+        // console.log("Screen stream", screenStream);
+        // socket.emit("screen_stream", screenStream);
+      } catch (err) {
         console.error("Error: " + err);
       }
     };
@@ -73,8 +96,11 @@
     const stopCapture = (evt) => {
       let tracks = videoElem.srcObject.getTracks();
 
-      tracks.forEach(track => track.stop());
+      tracks.forEach((track) => track.stop());
       videoElem.srcObject = null;
+      screenMediaRecorder.stop();
+      socket.emit("stop_screen");
+      socket.close();
     };
   </script>
   <body>
@@ -83,10 +109,10 @@
     <video
       width="300"
       height="220"
-      autoplay
       id="myvideo"
+      autoplay
       style="border: 5px solid blue"
-    />
+    ></video>
 
     <video
       width="300"
@@ -94,7 +120,7 @@
       autoplay
       id="myscreen"
       style="border: 5px solid red"
-    />
+    ></video>
 
     <button onclick="getVideoStream()">Start Rec</button>
     <button onclick="stopRecording()">Stop Rec</button>
